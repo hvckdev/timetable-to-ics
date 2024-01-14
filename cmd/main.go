@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"time"
+	_ "time/tzdata"
 )
 
 const layout = "2-Jan 2006 15:04"
@@ -32,6 +33,14 @@ func main() {
 	cal := createCalendar(cols, groupName, loc)
 
 	createResultAndSaveToFile(cal)
+
+	fmt.Println("done")
+
+	fmt.Println("click 'enter' for exit...")
+	_, err := bufio.NewReader(os.Stdin).ReadBytes('\n')
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 }
 
 func getColsFromExcelFile() [][]string {
@@ -41,17 +50,17 @@ func getColsFromExcelFile() [][]string {
 
 	_, err := fmt.Scan(&filePath)
 	if err != nil {
-		panic("Failed to get filepath")
+		log.Fatalf("Failed to get filepath")
 	}
 
 	file, err := excelize.OpenFile(filePath)
 	if err != nil {
-		panic("failed to open Excel file")
+		log.Fatalf("failed to open Excel file")
 	}
 
 	cols, err := file.GetRows(file.GetSheetName(0))
 	if err != nil {
-		panic("Failed to get cols")
+		log.Fatalf("Failed to get cols")
 	}
 
 	return cols
@@ -65,29 +74,36 @@ func getGroupName() string {
 
 	_, err := fmt.Scan(&groupName)
 	if err != nil {
-		panic("failed to receive group name")
+		log.Fatalf("failed to receive group name")
 	}
 	return groupName
 }
 
 func getLocation() *time.Location {
+	fmt.Println("trying to get current location")
 	loc, err := time.LoadLocation(currentLocation)
 	if err != nil {
-		panic(fmt.Sprintf("Error loading location: %s", err))
+		log.Fatalf(fmt.Sprintf("Error loading location: %s", err))
 	}
+	fmt.Println("successfully got location")
 	return loc
 }
 
 func createCalendar(cols [][]string, groupName string, loc *time.Location) *ics.Calendar {
+	fmt.Println("creating calendar")
+
 	cal := ics.NewCalendar()
 	cal.SetMethod(ics.MethodRequest)
 
 	var groupRowIndex int
 
+	fmt.Println("finding your group")
+
 	for colIndex, row := range cols {
 		for rowIndex, colCell := range row {
 			if colCell == groupName {
 				groupRowIndex = rowIndex
+				fmt.Println("group found")
 			}
 
 			if groupRowIndex == rowIndex {
@@ -112,7 +128,7 @@ func createCalendar(cols [][]string, groupName string, loc *time.Location) *ics.
 func getParsedDate(date string, timeString string, loc *time.Location) time.Time {
 	t, err := time.ParseInLocation(layout, fmt.Sprintf("%s %d %s", date, time.Now().Year(), timeString), loc)
 	if err != nil {
-		panic(fmt.Sprintf("Error parsing date: %s", err))
+		log.Fatalf(fmt.Sprintf("Error parsing date: %s", err))
 	}
 	return t
 }
@@ -133,7 +149,12 @@ func createResultAndSaveToFile(cal *ics.Calendar) {
 	if err != nil {
 		log.Fatalf("failed to create file: %v", err)
 	}
-	defer result.Close()
+	defer func(result *os.File) {
+		err := result.Close()
+		if err != nil {
+			log.Fatalf("failed to write data to file: %v", err)
+		}
+	}(result)
 
 	writer := bufio.NewWriter(result)
 
