@@ -1,5 +1,5 @@
 BINARY_NAME=timetable-to-ics
-VERSION=1.0.0
+VERSION=1.1.0
 BUILD=`date +%FT%T%z`
 
 # Путь к главному файлу
