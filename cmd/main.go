@@ -21,7 +21,8 @@ const currentLocation = "Europe/Samara"
 
 func main() {
 	fmt.Println("------")
-	fmt.Println(fmt.Sprintf("coo ulstu timetable to ics by %s", termlink.Link("hvck", "https://hvck.dev")))
+	fmt.Printf("coo ulstu timetable to ics by %s", termlink.Link("hvck", "https://hvck.dev"))
+	fmt.Println()
 	fmt.Println("------")
 
 	cols := getColsFromExcelFile()
@@ -32,15 +33,16 @@ func main() {
 
 	cal := createCalendar(cols, groupName, loc)
 
-	createResultAndSaveToFile(cal)
+	defer func() {
+		createResultAndSaveToFile(cal)
+		fmt.Println("done")
 
-	fmt.Println("done")
-
-	fmt.Println("click 'enter' for exit...")
-	_, err := bufio.NewReader(os.Stdin).ReadBytes('\n')
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
+		fmt.Println("click 'enter' for exit...")
+		_, err := bufio.NewReader(os.Stdin).ReadBytes('\n')
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+	}()
 }
 
 func getColsFromExcelFile() [][]string {
@@ -106,29 +108,33 @@ func createCalendar(cols [][]string, groupName string, loc *time.Location) *ics.
 				fmt.Println("group found")
 			}
 
-			if groupRowIndex == rowIndex {
-				if rowIndex > 1 {
-					date := cols[colIndex][rowIndex-1]
-
-					if len(date) > 3 && len(colCell) > 0 {
-						lessonStartDate := getParsedDate(date, lessonStartAt, loc)
-						lessonEndDate := getParsedDate(date, lessonEndAt, loc)
-						room := cols[colIndex][rowIndex+1]
-
-						addEventToCalendar(cal, lessonStartDate, lessonEndDate, room, colCell)
-					}
-				}
-			}
+			go addOnlyInputGroupEventsToCalendar(cols, groupRowIndex, rowIndex, colIndex, colCell, loc, cal)
 		}
 	}
 
 	return cal
 }
 
+func addOnlyInputGroupEventsToCalendar(cols [][]string, groupRowIndex int, rowIndex int, colIndex int, colCell string, loc *time.Location, cal *ics.Calendar) {
+	if groupRowIndex == rowIndex {
+		if rowIndex > 1 {
+			date := cols[colIndex][rowIndex-1]
+
+			if len(date) > 3 && len(colCell) > 0 {
+				lessonStartDate := getParsedDate(date, lessonStartAt, loc)
+				lessonEndDate := getParsedDate(date, lessonEndAt, loc)
+				room := cols[colIndex][rowIndex+1]
+
+				addEventToCalendar(cal, lessonStartDate, lessonEndDate, room, colCell)
+			}
+		}
+	}
+}
+
 func getParsedDate(date string, timeString string, loc *time.Location) time.Time {
 	t, err := time.ParseInLocation(layout, fmt.Sprintf("%s %d %s", date, time.Now().Year(), timeString), loc)
 	if err != nil {
-		log.Fatalf(fmt.Sprintf("Error parsing date: %s", err))
+		log.Panicf(fmt.Sprintf("Error parsing date: %s", err))
 	}
 	return t
 }
@@ -147,12 +153,12 @@ func addEventToCalendar(cal *ics.Calendar, start time.Time, end time.Time, room 
 func createResultAndSaveToFile(cal *ics.Calendar) {
 	result, err := os.Create(resultFileName)
 	if err != nil {
-		log.Fatalf("failed to create file: %v", err)
+		log.Panicf("failed to create file: %v", err)
 	}
 	defer func(result *os.File) {
 		err := result.Close()
 		if err != nil {
-			log.Fatalf("failed to write data to file: %v", err)
+			log.Panicf("failed to write data to file: %v", err)
 		}
 	}(result)
 
@@ -160,10 +166,10 @@ func createResultAndSaveToFile(cal *ics.Calendar) {
 
 	_, err = writer.Write([]byte(cal.Serialize()))
 	if err != nil {
-		log.Fatalf("failed to write data to file: %v", err)
+		log.Panicf("failed to write data to file: %v", err)
 	}
 
 	if err := writer.Flush(); err != nil {
-		log.Fatalf("failed to flush writer: %v", err)
+		log.Panicf("failed to flush writer: %v", err)
 	}
 }
