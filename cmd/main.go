@@ -13,10 +13,10 @@ import (
 	_ "time/tzdata"
 )
 
-const layout = "2-Jan 2006 15:04"
+const layout = "2/Jan 2006 15:04"
 const resultFileName = "result.ics"
 const lessonStartAt = "18:00"
-const lessonEndAt = "21:00"
+const lessonEndAt = "20:00"
 const currentLocation = "Europe/Samara"
 
 func main() {
@@ -108,7 +108,7 @@ func createCalendar(cols [][]string, groupName string, loc *time.Location) *ics.
 				fmt.Println("group found")
 			}
 
-			go addOnlyInputGroupEventsToCalendar(cols, groupRowIndex, rowIndex, colIndex, colCell, loc, cal)
+			addOnlyInputGroupEventsToCalendar(cols, groupRowIndex, rowIndex, colIndex, colCell, loc, cal)
 		}
 	}
 
