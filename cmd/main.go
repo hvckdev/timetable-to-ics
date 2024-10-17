@@ -85,7 +85,7 @@ func getLocation() *time.Location {
 	fmt.Println("trying to get current location")
 	loc, err := time.LoadLocation(currentLocation)
 	if err != nil {
-		log.Fatalf(fmt.Sprintf("Error loading location: %s", err))
+		log.Fatalf(fmt.Sprintf("Error loading location"))
 	}
 	fmt.Println("successfully got location")
 	return loc
