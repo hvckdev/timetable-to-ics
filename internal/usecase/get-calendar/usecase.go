@@ -3,6 +3,7 @@ package get_calendar
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"fmt"
 	"slices"
 	"strings"
@@ -36,7 +37,7 @@ func (uc *Usecase) GetCalendar(ctx context.Context, request models.GetCalendarRe
 			return []byte{}, fmt.Errorf("excel download error: %w", err)
 		}
 
-		currentLessons, err := getLessons(request.Group, download)
+		currentLessons, err := getLessons(request, download)
 		if err != nil {
 			return nil, err
 		}
@@ -60,7 +61,7 @@ func (uc *Usecase) GetCalendar(ctx context.Context, request models.GetCalendarRe
 	return []byte(cal.Serialize()), nil
 }
 
-func getLessons(group string, download []byte) ([]models.Lesson, error) {
+func getLessons(request models.GetCalendarRequest, download []byte) ([]models.Lesson, error) {
 	newReader := bytes.NewReader(download)
 	reader, err := excelize.OpenReader(newReader)
 	defer func(reader *excelize.File) {
@@ -85,11 +86,12 @@ func getLessons(group string, download []byte) ([]models.Lesson, error) {
 		}
 
 		groupIndex = slices.IndexFunc(cols, func(s string) bool {
-			return strings.EqualFold(s, group)
+			return strings.EqualFold(s, request.Group)
 		})
 	}
 
 	lessons := make([]models.Lesson, 0)
+	existsHash := make(map[string]bool)
 
 	defer func(rows *excelize.Rows) {
 		_ = rows.Close()
@@ -104,9 +106,15 @@ func getLessons(group string, download []byte) ([]models.Lesson, error) {
 		lessonDate := currentColumns[groupIndex-1]
 
 		if lessonInfo != "" {
-			parse, err := time.Parse("02.Jan 2006 15:04", lessonDate+" 2026 18:00")
+			parse, err := time.Parse("02.Jan 2006 15:04 -07", lessonDate+" 2026 18:00 "+request.Timezone)
 			if err != nil {
 				return nil, fmt.Errorf("parse date error: %w", err)
+			}
+
+			hasher := md5.New()
+			hash := hasher.Sum([]byte(lessonInfo + parse.String()))
+			if existsHash[string(hash)] {
+				continue
 			}
 
 			lessons = append(lessons, models.Lesson{
@@ -114,6 +122,8 @@ func getLessons(group string, download []byte) ([]models.Lesson, error) {
 				StartTime: parse,
 				EndTime:   parse.Add(time.Hour * 3),
 			})
+
+			existsHash[string(hash)] = true
 		}
 	}
 

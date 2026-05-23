@@ -18,7 +18,10 @@ func NewHandler(context context.Context, usecase *get_calendar.Usecase) *GetCale
 }
 
 func (h *GetCalendarHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	calendar, err := h.usecase.GetCalendar(h.context, models.GetCalendarRequest{Group: r.URL.Query().Get("group")})
+	calendar, err := h.usecase.GetCalendar(h.context, models.GetCalendarRequest{
+		Group:    r.URL.Query().Get("group"),
+		Timezone: r.URL.Query().Get("timezone"),
+	})
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
