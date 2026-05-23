@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	_ "time/tzdata"
 	ulstu_xlsx "timetable-to-ics/internal/clients/ulstu"
 	get_calendar "timetable-to-ics/internal/handlers/get-calendar"
@@ -14,6 +15,11 @@ import (
 
 func main() {
 	ctx := context.Background()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8589"
+	}
 
 	// clients
 	ulstuClient := ulstu_xlsx.NewClient()
@@ -29,9 +35,9 @@ func main() {
 	http.Handle("/", indexHandler)
 	http.Handle("/calendar", getCalendarHandler)
 
-	// Start the server on port 8080
-	fmt.Println("Server starting on :8589...")
-	if err := http.ListenAndServe(":8589", nil); err != nil {
+	addr := ":" + port
+	fmt.Printf("Server starting on %s...\n", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		panic(err)
 	}
 }
