@@ -48,7 +48,14 @@ func (uc *Usecase) GetCalendar(ctx context.Context, request models.GetCalendarRe
 	cal := ics.NewCalendar()
 	cal.SetMethod(ics.MethodRequest)
 
+	hasher := md5.New()
+	existsHash := make(map[string]bool)
 	for _, lesson := range lessons {
+		hash := hasher.Sum([]byte(lesson.Name + lesson.StartTime.String()))
+		if existsHash[string(hash)] {
+			continue
+		}
+
 		event := cal.AddEvent(uuid.New().String())
 		event.SetCreatedTime(time.Now())
 		event.SetDtStampTime(time.Now())
@@ -56,6 +63,8 @@ func (uc *Usecase) GetCalendar(ctx context.Context, request models.GetCalendarRe
 		event.SetStartAt(lesson.StartTime)
 		event.SetEndAt(lesson.EndTime)
 		event.SetSummary(lesson.Name)
+
+		existsHash[string(hash)] = true
 	}
 
 	return []byte(cal.Serialize()), nil
@@ -91,7 +100,10 @@ func getLessons(request models.GetCalendarRequest, download []byte) ([]models.Le
 	}
 
 	lessons := make([]models.Lesson, 0)
-	existsHash := make(map[string]bool)
+	loc, err := time.LoadLocation("Europe/Ulyanovsk")
+	if err != nil {
+		return []models.Lesson{}, fmt.Errorf("load timezone error: %w", err)
+	}
 
 	defer func(rows *excelize.Rows) {
 		_ = rows.Close()
@@ -106,15 +118,9 @@ func getLessons(request models.GetCalendarRequest, download []byte) ([]models.Le
 		lessonDate := currentColumns[groupIndex-1]
 
 		if lessonInfo != "" {
-			parse, err := time.Parse("02.Jan 2006 15:04 -07", lessonDate+" 2026 18:00 "+request.Timezone)
+			parse, err := time.ParseInLocation("02.Jan 2006 15:04", lessonDate+" 2026 18:00", loc)
 			if err != nil {
 				return nil, fmt.Errorf("parse date error: %w", err)
-			}
-
-			hasher := md5.New()
-			hash := hasher.Sum([]byte(lessonInfo + parse.String()))
-			if existsHash[string(hash)] {
-				continue
 			}
 
 			lessons = append(lessons, models.Lesson{
@@ -122,8 +128,6 @@ func getLessons(request models.GetCalendarRequest, download []byte) ([]models.Le
 				StartTime: parse,
 				EndTime:   parse.Add(time.Hour * 3),
 			})
-
-			existsHash[string(hash)] = true
 		}
 	}
 
