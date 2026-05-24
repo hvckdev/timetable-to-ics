@@ -9,6 +9,9 @@ import (
 	ulstu_xlsx "timetable-to-ics/internal/clients/ulstu"
 	get_calendar "timetable-to-ics/internal/handlers/get-calendar"
 	"timetable-to-ics/internal/handlers/index"
+	"timetable-to-ics/internal/services/calendar"
+	"timetable-to-ics/internal/services/lesson"
+	"timetable-to-ics/internal/services/ulstu"
 	get_calendar2 "timetable-to-ics/internal/usecase/get-calendar"
 	index2 "timetable-to-ics/internal/usecase/index"
 )
@@ -24,9 +27,14 @@ func main() {
 	// clients
 	ulstuClient := ulstu_xlsx.NewClient()
 
+	// services
+	ulstuService := ulstu.NewService(ulstuClient)
+	lessonService := lesson.NewService()
+	calendarService := calendar.NewService()
+
 	// use cases
 	indexUsecase := index2.NewUsecase(ulstuClient)
-	getCalendarUsecase := get_calendar2.NewUsecase(ulstuClient)
+	getCalendarUsecase := get_calendar2.NewUsecase(lessonService, ulstuService, calendarService)
 
 	// handlers
 	indexHandler := index.NewIndexHandler(ctx, indexUsecase)

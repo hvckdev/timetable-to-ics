@@ -18,8 +18,22 @@ func NewHandler(context context.Context, usecase *get_calendar.Usecase) *GetCale
 }
 
 func (h *GetCalendarHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	group := r.URL.Query().Get("group")
+	if group == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+
+		errorResponse := models.ErrorResponse{
+			Error: "Missing parameter 'group'",
+		}
+
+		marshal, _ := json.Marshal(errorResponse)
+		_, _ = w.Write(marshal)
+
+		return
+	}
 	calendar, err := h.usecase.GetCalendar(h.context, models.GetCalendarRequest{
-		Group: r.URL.Query().Get("group"),
+		Group: group,
 	})
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")

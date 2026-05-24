@@ -1,135 +1,44 @@
 package get_calendar
 
 import (
-	"bytes"
 	"context"
-	"crypto/md5"
 	"fmt"
-	"slices"
-	"strings"
-	"time"
-	"timetable-to-ics/internal/clients/ulstu"
 	"timetable-to-ics/internal/models"
-
-	ics "github.com/arran4/golang-ical"
-	"github.com/google/uuid"
-	"github.com/xuri/excelize/v2"
+	"timetable-to-ics/internal/services/calendar"
+	"timetable-to-ics/internal/services/lesson"
+	"timetable-to-ics/internal/services/ulstu"
 )
 
 type Usecase struct {
-	ulstuClient *ulstu.Client
+	lessonService   *lesson.Service
+	ulstuService    *ulstu.Service
+	calendarService *calendar.Service
 }
 
-func NewUsecase(ulstuClient *ulstu.Client) *Usecase {
-	return &Usecase{ulstuClient: ulstuClient}
+func NewUsecase(
+	lessonService *lesson.Service,
+	ulstuService *ulstu.Service,
+	calendarService *calendar.Service,
+) *Usecase {
+	return &Usecase{
+		lessonService:   lessonService,
+		ulstuService:    ulstuService,
+		calendarService: calendarService,
+	}
 }
 
 func (uc *Usecase) GetCalendar(ctx context.Context, request models.GetCalendarRequest) ([]byte, error) {
-	allFiles, err := uc.ulstuClient.ListLatestSchedules(ctx)
+	filesData, err := uc.ulstuService.GetAllFilesData(ctx)
 	if err != nil {
-		return []byte{}, fmt.Errorf("get excels list: %w", err)
+		return nil, fmt.Errorf("get all files data: %w", err)
 	}
 
-	lessons := make([]models.Lesson, 0)
-	for _, file := range allFiles {
-		download, err := uc.ulstuClient.Download(ctx, file)
-		if err != nil {
-			return []byte{}, fmt.Errorf("excel download error: %w", err)
-		}
-
-		currentLessons, err := getLessons(request, download)
-		if err != nil {
-			return nil, err
-		}
-
-		lessons = append(lessons, currentLessons...)
+	lessons, err := uc.lessonService.GetLessons(request, filesData)
+	if err != nil {
+		return nil, fmt.Errorf("get lessons: %w", err)
 	}
 
-	cal := ics.NewCalendar()
-	cal.SetMethod(ics.MethodRequest)
-
-	hasher := md5.New()
-	existsHash := make(map[string]bool)
-	for _, lesson := range lessons {
-		hash := hasher.Sum([]byte(lesson.Name + lesson.StartTime.String()))
-		if existsHash[string(hash)] {
-			continue
-		}
-
-		event := cal.AddEvent(uuid.New().String())
-		event.SetCreatedTime(time.Now())
-		event.SetDtStampTime(time.Now())
-		event.SetModifiedAt(time.Now())
-		event.SetStartAt(lesson.StartTime)
-		event.SetEndAt(lesson.EndTime)
-		event.SetSummary(lesson.Name)
-
-		existsHash[string(hash)] = true
-	}
+	cal := uc.calendarService.MakeCalendarFromLessons(lessons)
 
 	return []byte(cal.Serialize()), nil
-}
-
-func getLessons(request models.GetCalendarRequest, download []byte) ([]models.Lesson, error) {
-	newReader := bytes.NewReader(download)
-	reader, err := excelize.OpenReader(newReader)
-	defer func(reader *excelize.File) {
-		_ = reader.Close()
-	}(reader)
-	if err != nil {
-		return []models.Lesson{}, fmt.Errorf("excel reader error: %w", err)
-	}
-
-	firstSheet := reader.GetSheetName(0)
-	rows, err := reader.Rows(firstSheet)
-	if err != nil {
-		return nil, fmt.Errorf("get rows error: %w", err)
-	}
-
-	groupIndex := -1
-
-	for rows.Next() && groupIndex < 1 {
-		cols, err := rows.Columns()
-		if err != nil {
-			return nil, fmt.Errorf("get columns error: %w", err)
-		}
-
-		groupIndex = slices.IndexFunc(cols, func(s string) bool {
-			return strings.EqualFold(s, request.Group)
-		})
-	}
-
-	lessons := make([]models.Lesson, 0)
-	loc, err := time.LoadLocation("Europe/Ulyanovsk")
-	if err != nil {
-		return []models.Lesson{}, fmt.Errorf("load timezone error: %w", err)
-	}
-
-	defer func(rows *excelize.Rows) {
-		_ = rows.Close()
-	}(rows)
-	for rows.Next() {
-		currentColumns, err := rows.Columns()
-		if err != nil {
-			return nil, fmt.Errorf("get columns error: %w", err)
-		}
-
-		lessonInfo := currentColumns[groupIndex]
-		lessonDate := currentColumns[groupIndex-1]
-
-		if lessonInfo != "" {
-			parse, err := time.ParseInLocation("02.Jan 2006 15:04", lessonDate+" 2026 18:00", loc)
-			if err != nil {
-				return nil, fmt.Errorf("parse date error: %w", err)
-			}
-
-			lessons = append(lessons, models.Lesson{
-				Name:      lessonInfo,
-				StartTime: parse,
-				EndTime:   parse.Add(time.Hour * 3),
-			})
-		}
-	}
-
-	return lessons, nil
 }
