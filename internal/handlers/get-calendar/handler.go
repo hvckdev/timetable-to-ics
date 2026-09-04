@@ -42,6 +42,7 @@ func (h *GetCalendarHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response := models.ErrorResponse{Error: err.Error()}
 		marshal, _ := json.Marshal(response)
 		_, _ = w.Write(marshal)
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")

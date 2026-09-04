@@ -47,21 +47,21 @@ func (s *Service) getLessonFromFileData(fileData []byte, request models.GetCalen
 
 	newReader := bytes.NewReader(fileData)
 	reader, err := excelize.OpenReader(newReader)
-	defer func(reader *excelize.File) {
-		_ = reader.Close()
-	}(reader)
 	if err != nil {
 		return nil, fmt.Errorf("excel reader error: %w", err)
 	}
+	defer func() { _ = reader.Close() }()
 
 	firstSheet := reader.GetSheetName(0)
+	if firstSheet == "" {
+		return nil, fmt.Errorf("get first sheet: workbook has no sheets")
+	}
+
 	rows, err := reader.Rows(firstSheet)
-	defer func(rows *excelize.Rows) {
-		_ = rows.Close()
-	}(rows)
 	if err != nil {
 		return nil, fmt.Errorf("get rows error: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
 
 	groupIndex, err := getGroupIndex(rows, request)
 	if err != nil {
@@ -75,7 +75,10 @@ func (s *Service) getLessonFromFileData(fileData []byte, request models.GetCalen
 		}
 
 		lesson, err := s.getLesson(currentColumns, groupIndex)
-		if err != nil && !errors.Is(err, EmptyErr) {
+		if errors.Is(err, EmptyErr) {
+			continue
+		}
+		if err != nil {
 			return nil, err
 		}
 
@@ -86,12 +89,20 @@ func (s *Service) getLessonFromFileData(fileData []byte, request models.GetCalen
 }
 
 func (s *Service) getLesson(currentColumns []string, groupIndex int) (models.Lesson, error) {
-	lessonInfo := currentColumns[groupIndex]
+	// Excelize omits trailing empty cells, so rows outside a group's block can be shorter.
+	if groupIndex <= 0 || groupIndex >= len(currentColumns) {
+		return models.Lesson{}, EmptyErr
+	}
+
+	lessonInfo := strings.TrimSpace(currentColumns[groupIndex])
 	if lessonInfo == "" {
 		return models.Lesson{}, EmptyErr
 	}
 
-	lessonDate := currentColumns[groupIndex-1]
+	lessonDate := strings.TrimSpace(currentColumns[groupIndex-1])
+	if lessonDate == "" {
+		return models.Lesson{}, fmt.Errorf("lesson date is empty for %q", lessonInfo)
+	}
 
 	parse, err := time.ParseInLocation("02.Jan 2006 15:04", lessonDate+" 2026 18:00", s.loc)
 	if err != nil {
