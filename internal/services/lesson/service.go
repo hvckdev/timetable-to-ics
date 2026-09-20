@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 	"timetable-to-ics/internal/models"
@@ -14,6 +16,8 @@ import (
 )
 
 var EmptyErr = fmt.Errorf("lesson is empty")
+
+var groupNamePattern = regexp.MustCompile(`^[\p{L}\p{N}-]+-\d{2,3}$`)
 
 const onlineLessonsPage = "https://coe.ulstu.ru/index.php?action=show_page&id=103"
 
@@ -43,6 +47,60 @@ func (s *Service) GetLessons(request models.GetCalendarRequest, filesData [][]by
 	}
 
 	return result, nil
+}
+
+// GetGroups returns unique group names found in the first sheet of each workbook.
+func (s *Service) GetGroups(filesData [][]byte) ([]string, error) {
+	groupsByKey := make(map[string]string)
+
+	for _, fileData := range filesData {
+		reader, err := excelize.OpenReader(bytes.NewReader(fileData))
+		if err != nil {
+			return nil, fmt.Errorf("excel reader error: %w", err)
+		}
+
+		firstSheet := reader.GetSheetName(0)
+		if firstSheet == "" {
+			_ = reader.Close()
+			return nil, fmt.Errorf("get first sheet: workbook has no sheets")
+		}
+
+		rows, err := reader.GetRows(firstSheet)
+		_ = reader.Close()
+		if err != nil {
+			return nil, fmt.Errorf("get rows error: %w", err)
+		}
+
+		for _, row := range rows {
+			for _, cell := range row {
+				group := strings.TrimSpace(cell)
+				if !isGroupName(group) {
+					continue
+				}
+				key := strings.ToLower(group)
+				if _, exists := groupsByKey[key]; !exists {
+					groupsByKey[key] = group
+				}
+			}
+		}
+	}
+
+	groups := make([]string, 0, len(groupsByKey))
+	for _, group := range groupsByKey {
+		groups = append(groups, group)
+	}
+	sort.Slice(groups, func(i, j int) bool {
+		return strings.ToLower(groups[i]) < strings.ToLower(groups[j])
+	})
+
+	return groups, nil
+}
+
+func isGroupName(value string) bool {
+	if !groupNamePattern.MatchString(value) {
+		return false
+	}
+	return strings.IndexFunc(value, unicode.IsLetter) >= 0
 }
 
 // AddOnlineLinks enriches lessons with announcements from the ULSTU online lessons page.

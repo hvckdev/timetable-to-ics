@@ -28,6 +28,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		marshal, _ := json.Marshal(errorResponse)
 		_, _ = w.Write(marshal)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)

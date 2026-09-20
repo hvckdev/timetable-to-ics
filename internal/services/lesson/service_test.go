@@ -6,7 +6,43 @@ import (
 	"testing"
 	"time"
 	"timetable-to-ics/internal/models"
+
+	"github.com/xuri/excelize/v2"
 )
+
+func TestGetGroupsReturnsSortedUniqueGroupNames(t *testing.T) {
+	workbook := excelize.NewFile()
+	defer func() { _ = workbook.Close() }()
+
+	for cell, value := range map[string]string{
+		"A1": "Расписание", "C5": "ЦПИБВУ-31", "G5": "ЦИВТБв-11",
+		"K5": "цпибву-31", "C6": "Предмет-12 с пробелом", "G6": "123-45",
+	} {
+		if err := workbook.SetCellValue("Sheet1", cell, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	data, err := workbook.WriteToBuffer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	groups, err := NewService().GetGroups([][]byte{data.Bytes()})
+	if err != nil {
+		t.Fatalf("GetGroups() error = %v", err)
+	}
+
+	want := []string{"ЦИВТБв-11", "ЦПИБВУ-31"}
+	if len(groups) != len(want) {
+		t.Fatalf("GetGroups() = %#v, want %#v", groups, want)
+	}
+	for i := range want {
+		if groups[i] != want[i] {
+			t.Errorf("GetGroups()[%d] = %q, want %q", i, groups[i], want[i])
+		}
+	}
+}
 
 func TestGetLessonSkipsRowsWithoutGroupColumn(t *testing.T) {
 	service := &Service{loc: time.FixedZone("test", 0)}

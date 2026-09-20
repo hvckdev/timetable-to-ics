@@ -1,13 +1,32 @@
-# timetable to ics
+# timetable-to-ics
 
-this is simple program that can export 
-my university timetable to ics, because i
-tired of open excel everytime everyday everysecond
+HTTP-сервис, который превращает расписание УлГТУ в календарь с датами занятий и ссылками на онлайн-пары.
 
-## example of usage
+## Запуск
+
+```bash
+go run ./cmd
 ```
-    https://cal-ulstu.hvck.dev/calendar?group=цпибву-31
-```
 
-## you are the best
-i hope you enjoy 💖
+После запуска интерфейс доступен по адресу [http://localhost:8589](http://localhost:8589).
+
+В интерфейсе можно найти доступную учебную группу и:
+
+- подписаться на расписание в Apple Calendar;
+- добавить публичный календарь в Google Calendar;
+- скачать файл `.ics`.
+
+> Google Calendar загружает календарь со своих серверов, поэтому подписка через Google работает для публично доступного HTTPS-развёртывания, но не для `localhost`. Локально можно скачать `.ics`.
+
+## HTTP API
+
+- `GET /api/groups` — актуальный список групп из опубликованных Excel-файлов;
+- `GET /api/schedules` — метаданные последних файлов расписания;
+- `GET /calendar?group=цпибву-31` — календарь выбранной группы в формате ICS.
+
+## Проверка
+
+```bash
+go test ./...
+go build -o /tmp/timetable-to-ics ./cmd
+```

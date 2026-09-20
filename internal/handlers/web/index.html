@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10182f">
+  <meta name="description" content="Расписание УлГТУ в Apple Calendar, Google Calendar или формате ICS">
+  <title>Расписание УлГТУ — в вашем календаре</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="aurora aurora-one" aria-hidden="true"></div>
+  <div class="aurora aurora-two" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="brand" aria-label="Расписание УлГТУ">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 28 28" fill="none"><path d="M7 4.5v19M21 4.5v19M7 9h14M7 19h14"/><path d="m11 14 2 2 4-4"/></svg>
+      </span>
+      <span>УЛГТУ · КАЛЕНДАРЬ</span>
+    </header>
+
+    <section class="hero">
+      <div class="eyebrow"><span></span> Расписание всегда под рукой</div>
+      <h1>Пары — сразу<br>в вашем <em>календаре</em></h1>
+      <p class="lead">Выберите учебную группу, и мы соберём актуальное расписание с датами и ссылками на онлайн-занятия.</p>
+    </section>
+
+    <section class="glass-card" aria-labelledby="form-title">
+      <div class="card-heading">
+        <div>
+          <p class="step">01 · УЧЕБНАЯ ГРУППА</p>
+          <h2 id="form-title">Найдите свою группу</h2>
+        </div>
+        <div class="availability" id="availability" aria-live="polite">
+          <span class="pulse"></span><span>Загружаем группы</span>
+        </div>
+      </div>
+
+      <form id="calendar-form" novalidate>
+        <div class="combobox">
+          <label for="group-input">Название группы</label>
+          <div class="input-wrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+            <input id="group-input" name="group" type="text" placeholder="Например, ЦПИБВУ-31" autocomplete="off" autocapitalize="characters" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="group-options" disabled>
+            <button class="clear-button" id="clear-button" type="button" aria-label="Очистить поле" hidden>×</button>
+          </div>
+          <div class="options" id="group-options" role="listbox" hidden></div>
+          <p class="field-hint" id="field-hint">Можно начать вводить название — покажем совпадения</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="actions-heading">
+          <p class="step">02 · КУДА ДОБАВИТЬ</p>
+          <p>Выберите удобный способ</p>
+        </div>
+
+        <div class="actions">
+          <button class="action-button action-apple" id="apple-button" type="button" disabled>
+            <span class="action-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 12.54c-.03-3.1 2.53-4.6 2.65-4.67a5.7 5.7 0 0 0-4.48-2.43c-1.88-.2-3.7 1.13-4.66 1.13-.98 0-2.46-1.11-4.06-1.08a5.95 5.95 0 0 0-5 3.06c-2.17 3.76-.55 9.29 1.52 12.33 1.04 1.49 2.25 3.14 3.85 3.08 1.57-.06 2.16-.99 4.05-.99 1.88 0 2.43.99 4.06.95 1.68-.02 2.74-1.49 3.74-2.99a12.3 12.3 0 0 0 1.71-3.48 5.35 5.35 0 0 1-3.38-4.91ZM14 3.45A5.4 5.4 0 0 0 15.23 0a5.5 5.5 0 0 0-3.57 1.64 5.14 5.14 0 0 0-1.27 3.3A4.56 4.56 0 0 0 14 3.45Z"/></svg>
+            </span>
+            <span><strong>Apple Calendar</strong><small>Подписаться на расписание</small></span>
+            <span class="arrow" aria-hidden="true">↗</span>
+          </button>
+
+          <button class="action-button action-google" id="google-button" type="button" disabled>
+            <span class="action-icon google-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.55h3.24c1.9-1.75 2.98-4.33 2.98-7.42Z"/><path fill="#34A853" d="M12 22c2.7 0 4.98-.9 6.63-2.35l-3.25-2.55c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.77-5.61-4.14H3.04v2.63A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.39 13.92A6.01 6.01 0 0 1 6.08 12c0-.67.12-1.32.31-1.92V7.45H3.04A10 10 0 0 0 2 12c0 1.64.39 3.19 1.04 4.55l3.35-2.63Z"/><path fill="#EA4335" d="M12 5.94c1.47 0 2.79.51 3.83 1.5l2.87-2.88A9.64 9.64 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.63C7.18 7.71 9.39 5.94 12 5.94Z"/></svg>
+            </span>
+            <span><strong>Google Calendar</strong><small>Добавить по ссылке</small></span>
+            <span class="arrow" aria-hidden="true">↗</span>
+          </button>
+
+          <button class="download-button" id="download-button" type="submit" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14"/></svg>
+            Скачать файл .ics
+          </button>
+        </div>
+      </form>
+
+      <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <footer>
+      <span>Обновляется по данным Центра онлайн-образования УлГТУ</span>
+      <a href="https://coe.ulstu.ru/index.php?action=show_page&id=103" target="_blank" rel="noreferrer">Источник данных ↗</a>
+    </footer>
+  </main>
+</body>
+</html>
