@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"timetable-to-ics/internal/clients/ulstu"
+	"timetable-to-ics/internal/models"
 )
 
 type Service struct {
@@ -12,6 +13,14 @@ type Service struct {
 
 func NewService(ulstuClient *ulstu.Client) *Service {
 	return &Service{ulstuClient: ulstuClient}
+}
+
+func (s *Service) GetLessonLinks(ctx context.Context) ([]models.LessonLink, error) {
+	links, err := s.ulstuClient.ListLessonLinks(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get lesson links: %w", err)
+	}
+	return links, nil
 }
 
 func (s *Service) GetAllFilesData(ctx context.Context) ([][]byte, error) {

@@ -38,6 +38,12 @@ func (uc *Usecase) GetCalendar(ctx context.Context, request models.GetCalendarRe
 		return nil, fmt.Errorf("get lessons: %w", err)
 	}
 
+	lessonLinks, err := uc.ulstuService.GetLessonLinks(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get lesson links: %w", err)
+	}
+	lessons = uc.lessonService.AddOnlineLinks(lessons, lessonLinks)
+
 	cal := uc.calendarService.MakeCalendarFromLessons(lessons)
 
 	return []byte(cal.Serialize()), nil

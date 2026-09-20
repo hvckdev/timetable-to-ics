@@ -8,11 +8,14 @@ import (
 	"strings"
 	"time"
 	"timetable-to-ics/internal/models"
+	"unicode"
 
 	"github.com/xuri/excelize/v2"
 )
 
 var EmptyErr = fmt.Errorf("lesson is empty")
+
+const onlineLessonsPage = "https://coe.ulstu.ru/index.php?action=show_page&id=103"
 
 type Service struct {
 	loc *time.Location
@@ -40,6 +43,72 @@ func (s *Service) GetLessons(request models.GetCalendarRequest, filesData [][]by
 	}
 
 	return result, nil
+}
+
+// AddOnlineLinks enriches lessons with announcements from the ULSTU online lessons page.
+func (s *Service) AddOnlineLinks(lessons []models.Lesson, links []models.LessonLink) []models.Lesson {
+	type lessonKey struct {
+		day     int
+		month   time.Month
+		subject string
+	}
+
+	linksByLesson := make(map[lessonKey]models.LessonLink, len(links))
+	for _, link := range links {
+		key := lessonKey{day: link.Day, month: link.Month, subject: normalizeLessonName(link.Subject)}
+		if _, exists := linksByLesson[key]; !exists {
+			// The newest announcements are at the top of the page, so the first one wins.
+			linksByLesson[key] = link
+		}
+	}
+
+	for i := range lessons {
+		key := lessonKey{
+			day: lessons[i].StartTime.Day(), month: lessons[i].StartTime.Month(),
+			subject: normalizeLessonName(lessons[i].Name),
+		}
+		announcement, exists := linksByLesson[key]
+		if exists && announcement.URL != "" {
+			lessons[i].Link = announcement.URL
+			lessons[i].Description = "Ссылка на онлайн-занятие: " + announcement.URL
+			continue
+		}
+		if exists && announcement.Info != "" {
+			lessons[i].Description = "Информация со страницы онлайн-занятий:\n" + announcement.Info + "\n\nИсточник: " + onlineLessonsPage
+			continue
+		}
+		lessons[i].Description = "Ссылка на онлайн-занятие пока не опубликована. Проверяйте страницу: " + onlineLessonsPage
+	}
+
+	return lessons
+}
+
+func normalizeLessonName(value string) string {
+	value = strings.ToLower(strings.ReplaceAll(value, "ё", "е"))
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return ' '
+	}, value)
+
+	fields := strings.Fields(value)
+	if len(fields) >= 2 && fields[len(fields)-1] == "курс" && isDigits(fields[len(fields)-2]) {
+		fields = fields[:len(fields)-2]
+	}
+	return strings.Join(fields, " ")
+}
+
+func isDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) getLessonFromFileData(fileData []byte, request models.GetCalendarRequest) ([]models.Lesson, error) {

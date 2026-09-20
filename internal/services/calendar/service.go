@@ -35,6 +35,10 @@ func (s *Service) MakeCalendarFromLessons(lessons []models.Lesson) *ics.Calendar
 		event.SetStartAt(lesson.StartTime)
 		event.SetEndAt(lesson.EndTime)
 		event.SetSummary(lesson.Name)
+		event.SetDescription(lesson.Description)
+		if lesson.Link != "" {
+			event.SetURL(lesson.Link)
+		}
 
 		existsHash[string(hash)] = true
 	}

@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"timetable-to-ics/internal/models"
+	"unicode"
 
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/charmap"
@@ -93,6 +96,31 @@ func (c *Client) Download(ctx context.Context, sf ScheduleFile) ([]byte, error) 
 	}
 
 	return data, nil
+}
+
+// ListLessonLinks returns online lesson announcements from the schedule page.
+func (c *Client) ListLessonLinks(ctx context.Context) ([]models.LessonLink, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+schedulePageURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching page: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	doc, err := html.Parse(charmap.Windows1251.NewDecoder().Reader(resp.Body))
+	if err != nil {
+		return nil, fmt.Errorf("parsing html: %w", err)
+	}
+
+	return parseLessonLinks(getTextContentWithLinks(doc)), nil
 }
 
 func (c *Client) listScheduleFiles(ctx context.Context) ([]ScheduleFile, error) {
@@ -249,4 +277,138 @@ func getTextContent(n *html.Node) string {
 		sb.WriteString(getTextContent(c))
 	}
 	return sb.String()
+}
+
+var (
+	lessonBlockSeparator = regexp.MustCompile(`_{20,}`)
+	lessonDatePattern    = regexp.MustCompile(`(?i)(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+в\s+\d{1,2}[.:]\d{2}`)
+	lessonSubjectPattern = regexp.MustCompile(`(?is)предметы?\s*:\s*(.+?)(?:\s*преподаватель\s*:|\s*(?:новая\s+)?ссылка(?:\s+на\s+предмет)?\s*:|\s*документ\s|$)`)
+	lessonURLPattern     = regexp.MustCompile(`https?://[^\s<>"']+`)
+)
+
+var russianMonthForms = map[string]time.Month{
+	"января": time.January, "февраля": time.February, "марта": time.March,
+	"апреля": time.April, "мая": time.May, "июня": time.June,
+	"июля": time.July, "августа": time.August, "сентября": time.September,
+	"октября": time.October, "ноября": time.November, "декабря": time.December,
+}
+
+func parseLessonLinks(pageText string) []models.LessonLink {
+	pageText = strings.ReplaceAll(pageText, "\u00a0", " ")
+	blocks := lessonBlockSeparator.Split(pageText, -1)
+	links := make([]models.LessonLink, 0)
+	seen := make(map[string]struct{})
+
+	for _, block := range blocks {
+		dateMatches := lessonDatePattern.FindAllStringSubmatch(block, -1)
+		subjectMatch := lessonSubjectPattern.FindStringSubmatch(block)
+		if len(dateMatches) == 0 || len(subjectMatch) < 2 {
+			continue
+		}
+
+		subjects := splitSubjects(subjectMatch[1])
+		if len(subjects) == 0 {
+			continue
+		}
+
+		lessonURL := ""
+		if match := lessonURLPattern.FindString(block); match != "" {
+			lessonURL = strings.TrimRight(match, ".,;:!?)]}")
+		}
+		lessonInfo := cleanAnnouncementInfo(block)
+
+		for i, dateMatch := range dateMatches {
+			day, err := strconv.Atoi(dateMatch[1])
+			if err != nil {
+				continue
+			}
+
+			dateSubjects := subjects
+			if len(dateMatches) == len(subjects) {
+				dateSubjects = subjects[i : i+1]
+			}
+			for _, subject := range dateSubjects {
+				month := russianMonthForms[strings.ToLower(dateMatch[2])]
+				key := fmt.Sprintf("%d-%d-%s", month, day, canonicalSubject(subject))
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				links = append(links, models.LessonLink{
+					Day: day, Month: month, Subject: subject, URL: lessonURL, Info: lessonInfo,
+				})
+			}
+		}
+	}
+
+	return links
+}
+
+func cleanAnnouncementInfo(value string) string {
+	lines := strings.Split(value, "\n")
+	cleaned := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.Join(strings.Fields(line), " ")
+		if line != "" {
+			cleaned = append(cleaned, line)
+		}
+	}
+	return strings.Join(cleaned, "\n")
+}
+
+func canonicalSubject(value string) string {
+	value = strings.ToLower(strings.ReplaceAll(value, "ё", "е"))
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return ' '
+	}, value)
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func splitSubjects(value string) []string {
+	parts := strings.Split(value, "/")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.Join(strings.Fields(part), " ")
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
+func getTextContentWithLinks(n *html.Node) string {
+	if n.Type == html.TextNode {
+		return n.Data
+	}
+
+	var sb strings.Builder
+	if n.Type == html.ElementNode && isTextBlock(n.Data) {
+		sb.WriteByte('\n')
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		sb.WriteString(getTextContentWithLinks(c))
+	}
+	if n.Type == html.ElementNode && n.Data == "a" {
+		href := getAttr(n, "href")
+		if strings.HasPrefix(href, "http") && !strings.Contains(sb.String(), href) {
+			sb.WriteByte(' ')
+			sb.WriteString(href)
+		}
+	}
+	if n.Type == html.ElementNode && isTextBlock(n.Data) {
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
+func isTextBlock(tag string) bool {
+	switch tag {
+	case "br", "p", "div", "li", "tr", "h1", "h2", "h3", "h4":
+		return true
+	default:
+		return false
+	}
 }
