@@ -3,6 +3,7 @@ package calendar
 import (
 	"crypto/md5"
 	"time"
+
 	"timetable-to-ics/internal/models"
 
 	ics "github.com/arran4/golang-ical"
@@ -40,8 +41,18 @@ func (s *Service) MakeCalendarFromLessons(lessons []models.Lesson) *ics.Calendar
 			event.SetURL(lesson.Link)
 		}
 
+		addReminder(event, lesson.Name, "-PT1H")
+		addReminder(event, lesson.Name, "-PT3M")
+
 		existsHash[string(hash)] = true
 	}
 
 	return cal
+}
+
+func addReminder(event *ics.VEvent, lessonName, trigger string) {
+	alarm := event.AddAlarm()
+	alarm.SetAction(ics.ActionDisplay)
+	alarm.SetDescription("Скоро начнётся занятие: " + lessonName)
+	alarm.SetTrigger(trigger)
 }
