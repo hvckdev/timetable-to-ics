@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"timetable-to-ics/internal/models"
@@ -17,7 +17,10 @@ import (
 
 var EmptyErr = fmt.Errorf("lesson is empty")
 
-var groupNamePattern = regexp.MustCompile(`^[\p{L}\p{N}-]+-\d{2,3}$`)
+var (
+	groupNamePattern    = regexp.MustCompile(`^[\p{L}\p{N}-]+-\d{2,3}$`)
+	scheduleYearPattern = regexp.MustCompile(`\b(20\d{2})\b`)
+)
 
 const onlineLessonsPage = "https://coe.ulstu.ru/index.php?action=show_page&id=103"
 
@@ -184,24 +187,22 @@ func (s *Service) getLessonFromFileData(fileData []byte, request models.GetCalen
 		return nil, fmt.Errorf("get first sheet: workbook has no sheets")
 	}
 
-	rows, err := reader.Rows(firstSheet)
+	allRows, err := reader.GetRows(firstSheet)
 	if err != nil {
 		return nil, fmt.Errorf("get rows error: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
 
-	groupIndex, err := getGroupIndex(rows, request)
+	scheduleYear, err := getScheduleYear(allRows)
+	if err != nil {
+		return nil, err
+	}
+	groupRow, groupIndex, err := getGroupPosition(allRows, request)
 	if err != nil {
 		return nil, err
 	}
 
-	for rows.Next() {
-		currentColumns, err := rows.Columns()
-		if err != nil {
-			return nil, fmt.Errorf("get columns error: %w", err)
-		}
-
-		lesson, err := s.getLesson(currentColumns, groupIndex)
+	for _, currentColumns := range allRows[groupRow+1:] {
+		lesson, err := s.getLesson(currentColumns, groupIndex, scheduleYear)
 		if errors.Is(err, EmptyErr) {
 			continue
 		}
@@ -215,7 +216,7 @@ func (s *Service) getLessonFromFileData(fileData []byte, request models.GetCalen
 	return lessons, nil
 }
 
-func (s *Service) getLesson(currentColumns []string, groupIndex int) (models.Lesson, error) {
+func (s *Service) getLesson(currentColumns []string, groupIndex, scheduleYear int) (models.Lesson, error) {
 	// Excelize omits trailing empty cells, so rows outside a group's block can be shorter.
 	if groupIndex <= 0 || groupIndex >= len(currentColumns) {
 		return models.Lesson{}, EmptyErr
@@ -231,9 +232,9 @@ func (s *Service) getLesson(currentColumns []string, groupIndex int) (models.Les
 		return models.Lesson{}, fmt.Errorf("lesson date is empty for %q", lessonInfo)
 	}
 
-	parse, err := time.ParseInLocation("02.Jan 2006 15:04", lessonDate+" 2026 18:00", s.loc)
+	parse, err := s.parseLessonDate(lessonDate, scheduleYear)
 	if err != nil {
-		return models.Lesson{}, fmt.Errorf("parse date error: %w", err)
+		return models.Lesson{}, err
 	}
 
 	lesson := models.Lesson{
@@ -244,23 +245,51 @@ func (s *Service) getLesson(currentColumns []string, groupIndex int) (models.Les
 	return lesson, nil
 }
 
-func getGroupIndex(rows *excelize.Rows, request models.GetCalendarRequest) (int, error) {
-	groupIndex := -1
-
-	for rows.Next() && groupIndex < 1 {
-		cols, err := rows.Columns()
-		if err != nil {
-			return -1, fmt.Errorf("get columns error: %w", err)
+func (s *Service) parseLessonDate(lessonDate string, scheduleYear int) (time.Time, error) {
+	dateWithYear := fmt.Sprintf("%s %d 18:00", lessonDate, scheduleYear)
+	for _, layout := range []string{
+		"02.Jan 2006 15:04",
+		"2.Jan 2006 15:04",
+		"02.01 2006 15:04",
+		"2.1 2006 15:04",
+	} {
+		parsed, err := time.ParseInLocation(layout, dateWithYear, s.loc)
+		if err == nil {
+			return parsed, nil
 		}
-
-		groupIndex = slices.IndexFunc(cols, func(s string) bool {
-			return strings.EqualFold(s, request.Group)
-		})
 	}
 
-	if groupIndex == -1 {
-		return -1, fmt.Errorf("get group index error: %w", EmptyErr)
+	return time.Time{}, fmt.Errorf("parse date error: unsupported date %q", lessonDate)
+}
+
+func getScheduleYear(rows [][]string) (int, error) {
+	for _, row := range rows {
+		for _, cell := range row {
+			match := scheduleYearPattern.FindStringSubmatch(cell)
+			if len(match) < 2 {
+				continue
+			}
+			year, err := strconv.Atoi(match[1])
+			if err == nil {
+				return year, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("schedule year is not specified in workbook")
+}
+
+func getGroupPosition(rows [][]string, request models.GetCalendarRequest) (int, int, error) {
+	group := strings.TrimSpace(request.Group)
+	for rowIndex, row := range rows {
+		for columnIndex, value := range row {
+			if strings.EqualFold(strings.TrimSpace(value), group) {
+				if columnIndex == 0 {
+					return -1, -1, fmt.Errorf("group %q has no preceding date column", group)
+				}
+				return rowIndex, columnIndex, nil
+			}
+		}
 	}
 
-	return groupIndex, nil
+	return -1, -1, fmt.Errorf("get group index error: %w", EmptyErr)
 }

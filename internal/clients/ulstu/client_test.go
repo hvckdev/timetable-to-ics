@@ -45,6 +45,28 @@ ________________________________________________________________________________
 	}
 }
 
+func TestIsScheduleXLSXAcceptsDisplayTypeWhenURLHasNoExtension(t *testing.T) {
+	if !isScheduleXLSX("РАСПИСАНИЕ_ОКТ-26 (xlsx)", "/download?id=42") {
+		t.Fatal("schedule with an XLSX display type was not recognized")
+	}
+}
+
+func TestParseMonthYearSupportsAbbreviatedMonthsAndCompactYear(t *testing.T) {
+	months, year := parseMonthYear("РАСПИСАНИЕ_СЕНТ-ОКТ-26 (xlsx)")
+	if year != 2026 {
+		t.Errorf("year = %d, want 2026", year)
+	}
+	want := []time.Month{time.September, time.October}
+	if len(months) != len(want) {
+		t.Fatalf("months = %v, want %v", months, want)
+	}
+	for i := range want {
+		if months[i] != want[i] {
+			t.Errorf("months[%d] = %v, want %v", i, months[i], want[i])
+		}
+	}
+}
+
 func TestGetTextContentWithLinksUsesHref(t *testing.T) {
 	doc, err := html.Parse(strings.NewReader(`<p>Ссылка: <a href="https://example.com/call">подключиться</a></p>`))
 	if err != nil {

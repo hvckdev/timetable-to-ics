@@ -29,7 +29,11 @@ func (s *Service) GetAllFilesData(ctx context.Context) ([][]byte, error) {
 		return [][]byte{}, fmt.Errorf("get excels list: %w", err)
 	}
 
-	allFiles := make([][]byte, 0)
+	if len(filesInfo) == 0 {
+		return nil, fmt.Errorf("no timetable files found on the ULSTU page")
+	}
+
+	allFiles := make([][]byte, 0, len(filesInfo))
 	for _, fileInfo := range filesInfo {
 		download, err := s.ulstuClient.Download(ctx, fileInfo)
 		if err != nil {

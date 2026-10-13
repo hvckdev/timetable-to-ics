@@ -52,7 +52,7 @@ func TestGetLessonSkipsRowsWithoutGroupColumn(t *testing.T) {
 		{},
 		{"04.Sep"},
 	} {
-		_, err := service.getLesson(currentColumns, 71)
+		_, err := service.getLesson(currentColumns, 71, 2026)
 		if !errors.Is(err, EmptyErr) {
 			t.Fatalf("getLesson(%v, 71) error = %v, want EmptyErr", currentColumns, err)
 		}
@@ -96,10 +96,41 @@ func TestAddOnlineLinksPrefersNewestAnnouncement(t *testing.T) {
 	}
 }
 
+func TestGetLessonsUsesYearFromWorkbook(t *testing.T) {
+	workbook := excelize.NewFile()
+	defer func() { _ = workbook.Close() }()
+
+	for cell, value := range map[string]string{
+		"A1": "Расписание занятий на 2027 год",
+		"C5": "ЦПИБВУ-31",
+		"B6": "04.Sep",
+		"C6": "Databases",
+	} {
+		if err := workbook.SetCellValue("Sheet1", cell, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := workbook.WriteToBuffer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lessons, err := NewService().GetLessons(models.GetCalendarRequest{Group: "цпибву-31"}, [][]byte{data.Bytes()})
+	if err != nil {
+		t.Fatalf("GetLessons() error = %v", err)
+	}
+	if len(lessons) != 1 {
+		t.Fatalf("GetLessons() returned %d lessons, want 1", len(lessons))
+	}
+	if lessons[0].StartTime.Year() != 2027 {
+		t.Errorf("lesson year = %d, want 2027", lessons[0].StartTime.Year())
+	}
+}
+
 func TestGetLessonParsesLesson(t *testing.T) {
 	service := &Service{loc: time.FixedZone("test", 0)}
 
-	lesson, err := service.getLesson([]string{"04.Sep", "Databases"}, 1)
+	lesson, err := service.getLesson([]string{"04.Sep", "Databases"}, 1, 2026)
 	if err != nil {
 		t.Fatalf("getLesson() error = %v", err)
 	}
@@ -109,5 +140,17 @@ func TestGetLessonParsesLesson(t *testing.T) {
 	}
 	if want := time.Date(2026, time.September, 4, 18, 0, 0, 0, service.loc); !lesson.StartTime.Equal(want) {
 		t.Errorf("lesson.StartTime = %v, want %v", lesson.StartTime, want)
+	}
+}
+
+func TestGetLessonParsesNumericDate(t *testing.T) {
+	service := &Service{loc: time.FixedZone("test", 0)}
+
+	lesson, err := service.getLesson([]string{"04.09", "Databases"}, 1, 2026)
+	if err != nil {
+		t.Fatalf("getLesson() error = %v", err)
+	}
+	if lesson.StartTime.Month() != time.September || lesson.StartTime.Day() != 4 {
+		t.Errorf("lesson date = %v, want 4 September", lesson.StartTime)
 	}
 }

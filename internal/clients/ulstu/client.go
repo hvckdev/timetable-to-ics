@@ -168,6 +168,11 @@ func (c *Client) listScheduleFiles(ctx context.Context) ([]ScheduleFile, error) 
 
 				if isScheduleXLSX(displayName, href) {
 					months, year := parseMonthYear(displayName)
+					if len(months) == 0 {
+						// Do not silently discard a valid schedule just because its name changed.
+						files = append(files, ScheduleFile{DisplayName: displayName, URL: baseURL + href, Year: year})
+						return
+					}
 					for _, m := range months {
 						files = append(files, ScheduleFile{
 							DisplayName: displayName,
@@ -199,48 +204,54 @@ func isScheduleXLSX(displayName, href string) bool {
 	if href == "" || href == "/userfiles/image/" {
 		return false
 	}
-	if !strings.HasSuffix(strings.ToLower(href), ".xlsx") {
+
+	lowerName := strings.ToLower(displayName)
+	if !strings.Contains(lowerName, "расписание") {
 		return false
 	}
-	return strings.Contains(strings.ToLower(displayName), "расписание")
+
+	fileURL := strings.ToLower(strings.SplitN(href, "?", 2)[0])
+	return strings.HasSuffix(fileURL, ".xlsx") || strings.Contains(lowerName, "(xlsx)")
 }
 
-var russianMonths = map[string]time.Month{
-	"январь":   time.January,
-	"февраль":  time.February,
-	"март":     time.March,
-	"апрель":   time.April,
-	"май":      time.May,
-	"июнь":     time.June,
-	"июль":     time.July,
-	"август":   time.August,
-	"сентябрь": time.September,
-	"октябрь":  time.October,
-	"ноябрь":   time.November,
-	"декабрь":  time.December,
+var russianMonthAliases = []struct {
+	alias string
+	month time.Month
+}{
+	{"янв", time.January}, {"фев", time.February}, {"мар", time.March},
+	{"апр", time.April}, {"май", time.May}, {"мая", time.May}, {"июн", time.June},
+	{"июл", time.July}, {"авг", time.August}, {"сен", time.September},
+	{"сент", time.September}, {"окт", time.October}, {"ноя", time.November},
+	{"дек", time.December},
 }
+
+var scheduleYearPattern = regexp.MustCompile(`(?:^|[^0-9])(20[0-9]{2}|[0-9]{2})(?:$|[^0-9])`)
 
 func parseMonthYear(displayName string) ([]time.Month, int) {
 	lower := strings.ToLower(displayName)
-
-	var months []time.Month
-	for ru, m := range russianMonths {
-		if strings.Contains(lower, ru) {
-			months = append(months, m)
+	monthsByNumber := make(map[time.Month]struct{})
+	for _, alias := range russianMonthAliases {
+		if strings.Contains(lower, alias.alias) {
+			monthsByNumber[alias.month] = struct{}{}
 		}
 	}
 
+	months := make([]time.Month, 0, len(monthsByNumber))
+	for month := range monthsByNumber {
+		months = append(months, month)
+	}
+	sort.Slice(months, func(i, j int) bool { return months[i] < months[j] })
+
 	year := 0
-	parts := strings.FieldsFunc(displayName, func(r rune) bool {
-		return r == '_' || r == ' ' || r == '('
-	})
-	for _, p := range parts {
-		if len(p) == 2 {
-			y, err := strconv.Atoi(p)
-			if err == nil && y >= 0 && y <= 99 {
-				year = 2000 + y
-			}
+	for _, match := range scheduleYearPattern.FindAllStringSubmatch(displayName, -1) {
+		value, err := strconv.Atoi(match[1])
+		if err != nil {
+			continue
 		}
+		if value < 100 {
+			value += 2000
+		}
+		year = value
 	}
 
 	return months, year
