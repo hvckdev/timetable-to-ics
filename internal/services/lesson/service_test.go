@@ -143,6 +143,23 @@ func TestGetLessonParsesLesson(t *testing.T) {
 	}
 }
 
+func TestParseLessonDateInfersClosestYearWhenWorkbookHasNoYear(t *testing.T) {
+	service := &Service{
+		loc: time.FixedZone("test", 0),
+		now: func() time.Time {
+			return time.Date(2026, time.December, 15, 12, 0, 0, 0, time.UTC)
+		},
+	}
+
+	lessonDate, err := service.parseLessonDate("10.Jan", 0)
+	if err != nil {
+		t.Fatalf("parseLessonDate() error = %v", err)
+	}
+	if lessonDate.Year() != 2027 {
+		t.Errorf("year = %d, want 2027", lessonDate.Year())
+	}
+}
+
 func TestGetLessonParsesNumericDate(t *testing.T) {
 	service := &Service{loc: time.FixedZone("test", 0)}
 

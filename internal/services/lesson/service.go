@@ -26,6 +26,7 @@ const onlineLessonsPage = "https://coe.ulstu.ru/index.php?action=show_page&id=10
 
 type Service struct {
 	loc *time.Location
+	now func() time.Time
 }
 
 func NewService() *Service {
@@ -34,7 +35,7 @@ func NewService() *Service {
 		panic(err)
 	}
 
-	return &Service{loc: location}
+	return &Service{loc: location, now: time.Now}
 }
 
 func (s *Service) GetLessons(request models.GetCalendarRequest, filesData [][]byte) ([]models.Lesson, error) {
@@ -192,10 +193,7 @@ func (s *Service) getLessonFromFileData(fileData []byte, request models.GetCalen
 		return nil, fmt.Errorf("get rows error: %w", err)
 	}
 
-	scheduleYear, err := getScheduleYear(allRows)
-	if err != nil {
-		return nil, err
-	}
+	scheduleYear := getScheduleYear(allRows)
 	groupRow, groupIndex, err := getGroupPosition(allRows, request)
 	if err != nil {
 		return nil, err
@@ -246,23 +244,61 @@ func (s *Service) getLesson(currentColumns []string, groupIndex, scheduleYear in
 }
 
 func (s *Service) parseLessonDate(lessonDate string, scheduleYear int) (time.Time, error) {
-	dateWithYear := fmt.Sprintf("%s %d 18:00", lessonDate, scheduleYear)
-	for _, layout := range []string{
+	layouts := []string{
 		"02.Jan 2006 15:04",
 		"2.Jan 2006 15:04",
 		"02.01 2006 15:04",
 		"2.1 2006 15:04",
-	} {
-		parsed, err := time.ParseInLocation(layout, dateWithYear, s.loc)
-		if err == nil {
-			return parsed, nil
-		}
+	}
+	years := []int{scheduleYear}
+	if scheduleYear == 0 {
+		referenceYear := s.currentTime().In(s.loc).Year()
+		years = []int{referenceYear - 1, referenceYear, referenceYear + 1}
 	}
 
-	return time.Time{}, fmt.Errorf("parse date error: unsupported date %q", lessonDate)
+	var candidates []time.Time
+	for _, year := range years {
+		dateWithYear := fmt.Sprintf("%s %d 18:00", lessonDate, year)
+		for _, layout := range layouts {
+			parsed, err := time.ParseInLocation(layout, dateWithYear, s.loc)
+			if err == nil {
+				candidates = append(candidates, parsed)
+				break
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return time.Time{}, fmt.Errorf("parse date error: unsupported date %q", lessonDate)
+	}
+	if scheduleYear != 0 {
+		return candidates[0], nil
+	}
+
+	referenceTime := s.currentTime().In(s.loc)
+	closest := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if absoluteDuration(candidate.Sub(referenceTime)) < absoluteDuration(closest.Sub(referenceTime)) {
+			closest = candidate
+		}
+	}
+	return closest, nil
 }
 
-func getScheduleYear(rows [][]string) (int, error) {
+func (s *Service) currentTime() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
+func absoluteDuration(value time.Duration) time.Duration {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
+func getScheduleYear(rows [][]string) int {
 	for _, row := range rows {
 		for _, cell := range row {
 			match := scheduleYearPattern.FindStringSubmatch(cell)
@@ -271,11 +307,11 @@ func getScheduleYear(rows [][]string) (int, error) {
 			}
 			year, err := strconv.Atoi(match[1])
 			if err == nil {
-				return year, nil
+				return year
 			}
 		}
 	}
-	return 0, fmt.Errorf("schedule year is not specified in workbook")
+	return 0
 }
 
 func getGroupPosition(rows [][]string, request models.GetCalendarRequest) (int, int, error) {
